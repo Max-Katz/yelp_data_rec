@@ -1,0 +1,92 @@
+import json
+from collections import defaultdict
+import matplotlib.pyplot as plt
+
+def load_data(file_path):
+    """Generator to load JSON data from a file."""
+    with open(file_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+def get_user_name(user_id, user_file):
+    for user in load_data(user_file):
+        if user['user_id'] == user_id:
+            return user.get('name', 'Unknown User')
+    return 'Unknown User'
+
+def get_user_liked_categories(user_id, review_file, business_file):
+    """Get a dictionary of categories liked by the user with their frequencies."""
+    # Load business data
+    business_data = {}
+    for business in load_data(business_file):
+        business_id = business.get('business_id')
+        categories = business.get('categories') or []
+        if isinstance(categories, str):
+            categories = [cat.strip() for cat in categories.split(',')]
+        business_data[business_id] = categories
+
+    # Count liked categories
+    liked_categories = defaultdict(int)
+    for review in load_data(review_file):
+        if review['user_id'] == user_id and review['stars'] >= 4.5:
+            business_id = review.get('business_id')
+            if business_id in business_data:
+                categories = business_data[business_id]
+                for category in categories:
+                    liked_categories[category] += 1
+
+    return liked_categories
+
+def consolidate_categories(liked_categories):
+    """Consolidate categories that appear only once into 'Other'."""
+    consolidated_categories = defaultdict(int)
+    for category, count in liked_categories.items():
+        if count > 1:
+            consolidated_categories[category] = count
+        else:
+            consolidated_categories["Other"] += count
+    return consolidated_categories
+
+user_name = get_user_name(user_id, user_file_path)
+
+def plot_user_liked_categories(user_id, liked_categories):
+    """Plot a pie chart of the user's liked categories."""
+    # Extract categories and counts
+    categories = list(liked_categories.keys())
+    counts = list(liked_categories.values())
+
+    # Create the pie chart
+    plt.figure(figsize=(8, 8))
+    plt.pie(
+        counts, 
+        labels=categories, 
+        autopct='%1.1f%%', 
+        startangle=140, 
+        textprops={'fontsize': 10}
+    )
+    plt.title(f"Categories Liked by User {user_name}", fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+# File paths (replace with actual file paths)
+review_file_path = "yelp_academic_dataset_review.json"
+business_file_path = "yelp_academic_dataset_business.json"
+user_file_path = "yelp_academic_dataset_user.json"
+
+# User ID for whom to generate the pie chart
+user_id = "kkPgJv6KBFN15caG7NYYlg"
+
+# Get liked categories for the user
+liked_categories = get_user_liked_categories(user_id, review_file_path, business_file_path)
+
+# Consolidate low-frequency categories
+consolidated_categories = consolidate_categories(liked_categories)
+
+# Plot the pie chart if there are liked categories
+if consolidated_categories:
+    plot_user_liked_categories(user_id, consolidated_categories)
+else:
+    print(f"User {user_id} has no liked categories.")
