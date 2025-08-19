@@ -1,0 +1,92 @@
+import json
+from collections import defaultdict
+
+def load_data(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+def get_user_name(user_id, user_file):
+    for user in load_data(user_file):
+        if user['user_id'] == user_id:
+            return user.get('name', 'Unknown User')
+    return 'Unknown User'
+
+def get_highly_rated_categories(user_id, review_file, business_file):
+    business_data = {}
+    for business in load_data(business_file):
+        business_id = business.get('business_id')
+        categories = business.get('categories') or []
+        if isinstance(categories, str):
+            categories = [cat.strip() for cat in categories.split(',')]
+        business_data[business_id] = {'categories': categories}
+
+    liked_categories = defaultdict(int)
+    reviewed_businesses = set()
+    for review in load_data(review_file):
+        if review['user_id'] == user_id:
+            business_id = review['business_id']
+            if review['stars'] >= 0:
+                if business_id in business_data:
+                    categories = business_data[business_id].get('categories') or []
+                    for category in categories:
+                        liked_categories[category] += 1
+            reviewed_businesses.add(business_id)
+    
+    top_categories = [category for category, count in sorted(liked_categories.items(), key=lambda x: x[1], reverse=True)[:5]]
+    return top_categories, reviewed_businesses
+
+def recommend_businesses(user_id, review_file, business_file, user_file, top_n=4):
+    top_categories, reviewed_businesses = get_highly_rated_categories(user_id, review_file, business_file)
+
+
+    recommendations = defaultdict(list)
+    for business in load_data(business_file):
+        business_id = business.get('business_id')
+        if business_id in reviewed_businesses:
+            continue
+        
+        categories = business.get('categories') or []
+        if isinstance(categories, str):
+            categories = [cat.strip() for cat in categories.split(',')]
+        
+        # Find the intersection of top categories and business categories
+        matching_categories = set(top_categories).intersection(categories)
+        if len(matching_categories) >= 2 and business.get('stars', 0) >= 4.5:
+            recommendations[tuple(matching_categories)].append((business['name'], business['stars']))
+
+    final_recommendations = {}
+    for category_group, businesses in recommendations.items():
+        sorted_businesses = sorted(businesses, key=lambda x: -x[1])[:top_n]
+        final_recommendations[category_group] = sorted_businesses
+
+    return final_recommendations, top_categories
+
+# File paths (update these to the location of your files)
+review_file_path = "yelp_academic_dataset_review.json"
+business_file_path = "yelp_academic_dataset_business.json"
+user_file_path = "yelp_academic_dataset_user.json"
+
+# User ID for whom to recommend businesses
+user_id = "2l0O1EI1m0yWjFo2zSt71w"
+
+# Get the user name
+user_name = get_user_name(user_id, user_file_path)
+
+# Get recommendations and top categories
+recommendations, top_categories = recommend_businesses(user_id, review_file_path, business_file_path, user_file_path)
+
+# Display top categories and recommendations
+if isinstance(recommendations, dict):
+    print(f"Top Categories for {user_name}:")
+    for category in top_categories:
+        print(f"  - {category}")
+
+    print(f"\nRecommendations for {user_name}:")
+    for categories, businesses in recommendations.items():
+        print(f"\nCategories: {', '.join(categories)}")
+        for business_name, rating in businesses:
+            print(f"  - {business_name} (Rating: {rating})")
